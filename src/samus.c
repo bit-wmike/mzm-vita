@@ -1,3 +1,6 @@
+#ifdef PORT
+#include "port/port_view.h"
+#endif
 #include "samus.h"
 #include "gba.h"
 #include "block.h" // Necessary
@@ -8099,7 +8102,11 @@ void SamusInit(void)
  * @brief bde8 | 4f0 | Draws samus
  * 
  */
+#ifdef PORT
+static void SamusDraw_PortImpl(void)
+#else
 void SamusDraw(void)
+#endif
 {
     u8 priority;
     s32 i;
@@ -8369,3 +8376,13 @@ void SamusDraw(void)
 
     gNextOamSlot = nextSlot;
 }
+
+#ifdef PORT
+// Port: remember which object the OAM entries belong to (port/port_view.c).
+void SamusDraw(void)
+{
+    u8 oamStart = gNextOamSlot;
+    SamusDraw_PortImpl();
+    Port_OamMark(oamStart, gNextOamSlot, PORT_ANCHOR_WORLD, (s16)(SUB_PIXEL_TO_PIXEL_(gSamusData.xPosition) - SUB_PIXEL_TO_PIXEL(gBg1XPosition)), (s16)(SUB_PIXEL_TO_PIXEL_(gSamusData.yPosition) - SUB_PIXEL_TO_PIXEL(gBg1YPosition)));
+}
+#endif

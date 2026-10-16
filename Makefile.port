@@ -51,7 +51,7 @@ endif
 
 VERSION := $(shell cat platform/vita/VERSION)
 
-CPPFLAGS := -DPORT -DMZM_PORT_VERSION=\"$(VERSION)\" $(REGION_DEF) -Iinclude -I. -Iport/ppu/include
+CPPFLAGS := -DPORT -DMODE1_GBA_WIDTH=400 -DMODE1_GBA_HEIGHT=240 -DMODE1_GBA_BG_CLIP_X=1024 -DMZM_PORT_VERSION=\"$(VERSION)\" $(REGION_DEF) -Iinclude -I. -Iport/ppu/include
 CFLAGS := $(ARCHFLAGS) $(OPT) -std=gnu11 -fno-strict-aliasing -fwrapv -fno-common -fno-toplevel-reorder -w $(EXTRA_CFLAGS)
 
 GAME_SRC := $(filter-out src/dma.c src/multiboot.c,$(shell find src -name '*.c' | sort))

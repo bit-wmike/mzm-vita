@@ -28,6 +28,28 @@
 #endif
 
 virtuappu_mode1_pre_line_fn virtuappu_mode1_pre_line_callback = NULL;
+int virtuappu_mode1_bg_dx[4];
+int virtuappu_mode1_bg_dy[4];
+int virtuappu_mode1_win_dx;
+int virtuappu_mode1_win_dy;
+int virtuappu_mode1_obj_port;
+int16_t virtuappu_mode1_obj_dx[128];
+int16_t virtuappu_mode1_obj_dy[128];
+int16_t virtuappu_mode1_obj_base_x[128];
+int16_t virtuappu_mode1_obj_base_y[128];
+int virtuappu_mode1_line_dy;
+
+/* Window edges in GBA-screen coordinates -> wide frame coordinates. */
+static inline void mode1_port_window(int* left, int* right, int* top, int* bottom) {
+    if (virtuappu_mode1_win_dx) {
+        *left = *left == 0 ? 0 : *left + virtuappu_mode1_win_dx;
+        *right = *right >= 240 ? 1024 : *right + virtuappu_mode1_win_dx;
+    }
+    if (virtuappu_mode1_win_dy) {
+        *top = *top == 0 ? 0 : *top + virtuappu_mode1_win_dy;
+        *bottom = *bottom >= 160 ? 1024 : *bottom + virtuappu_mode1_win_dy;
+    }
+}
 
 typedef struct Mode1TilemapEntry {
     uint16_t raw;
@@ -801,7 +823,10 @@ static inline int mode1_pre_line_source_for_output(int line) {
                    ? source_line
                    : -1;
     }
-    return line < MODE1_GBA_NATIVE_HEIGHT ? line : -1;
+    {
+        const int source_line = line - virtuappu_mode1_line_dy;
+        return source_line >= 0 && source_line < MODE1_GBA_NATIVE_HEIGHT ? source_line : -1;
+    }
 }
 
 static inline bool mode1_shadow_geometry_for_bg(int bg_index, int* cols, int* stride) {
@@ -1029,8 +1054,8 @@ static void mode1_render_text_bg_native_tokens_range(int bg_index, int line, uin
     const uint16_t size_flag = (uint16_t)((bgcnt >> 14u) & 3u);
     const int map_width_tiles = (size_flag & 1u) != 0u ? 64 : 32;
     const int map_height_tiles = (size_flag & 2u) != 0u ? 64 : 32;
-    const int scroll_x = virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0HOFS + bg_index * 4)) & 0x1FF;
-    const int scroll_y = virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0VOFS + bg_index * 4)) & 0x1FF;
+    const int scroll_x = (virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0HOFS + bg_index * 4)) + virtuappu_mode1_bg_dx[bg_index]) & 0x1FF;
+    const int scroll_y = (virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0VOFS + bg_index * 4)) + virtuappu_mode1_bg_dy[bg_index]) & 0x1FF;
     const int src_y = (line + scroll_y) & (map_height_tiles * 8 - 1);
     const int tile_row = src_y >> 3;
     const int pixel_y = src_y & 7;
@@ -1208,8 +1233,8 @@ static void mode1_render_text_bg_compact_tokens(int bg_index, int line, uint16_t
 
     const uint32_t char_base = (uint32_t)((bgcnt >> 2u) & 3u) * 0x4000u;
     const uint32_t screen_base = (uint32_t)((bgcnt >> 8u) & 0x1Fu) * 0x800u;
-    const int scroll_x = virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0HOFS + bg_index * 4)) & 0x1FF;
-    const int scroll_y = virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0VOFS + bg_index * 4)) & 0x1FF;
+    const int scroll_x = (virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0HOFS + bg_index * 4)) + virtuappu_mode1_bg_dx[bg_index]) & 0x1FF;
+    const int scroll_y = (virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0VOFS + bg_index * 4)) + virtuappu_mode1_bg_dy[bg_index]) & 0x1FF;
     const int sample_line = native_bounds ? line - native_top : line;
     int src_y = (sample_line + scroll_y) & (map_height_tiles * 8 - 1);
     int tile_row = src_y >> 3;
@@ -1322,8 +1347,8 @@ void virtuappu_mode1_render_text_bg_line(int bg_index, int line, uint32_t* line_
     uint16_t size_flag = (uint16_t)((bgcnt >> 14u) & 3u);
     int map_width_tiles = (size_flag & 1u) ? 64 : 32;
     int map_height_tiles = (size_flag & 2u) ? 64 : 32;
-    int scroll_x = virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0HOFS + bg_index * 4)) & 0x1FF;
-    int scroll_y = virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0VOFS + bg_index * 4)) & 0x1FF;
+    int scroll_x = (virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0HOFS + bg_index * 4)) + virtuappu_mode1_bg_dx[bg_index]) & 0x1FF;
+    int scroll_y = (virtuappu_mode1_io_read16((uint16_t)(MODE1_IO_BG0VOFS + bg_index * 4)) + virtuappu_mode1_bg_dy[bg_index]) & 0x1FF;
     uint16_t mosaic_reg = virtuappu_mode1_io_read16(MODE1_IO_MOSAIC);
     /* BG mosaic honored when BGCNT bit 6 is set (GBA-accurate; gate removed). */
     int mosaic_h = mosaic_on ? (int)((mosaic_reg & 0x0Fu) + 1u) : 1;
@@ -1648,7 +1673,10 @@ void virtuappu_mode1_render_obj_line(int line, bool obj_1d, uint32_t* line_buffe
         }
 
         obj_y = mode1_oam_y(attr);
-        if (virtuappu_mode1_obj_y_negative[i] || obj_y >= mode1_obj_y_wrap_threshold()) {
+        if (virtuappu_mode1_obj_port) {
+            const int base_y = virtuappu_mode1_obj_base_y[i];
+            obj_y = base_y + (((obj_y - base_y + 128) & 255) - 128) + virtuappu_mode1_obj_dy[i];
+        } else if (virtuappu_mode1_obj_y_negative[i] || obj_y >= mode1_obj_y_wrap_threshold()) {
             obj_y -= 256;
         }
         if (line < obj_y || line >= obj_y + bounds_height) {
@@ -1660,7 +1688,10 @@ void virtuappu_mode1_render_obj_line(int line, bool obj_1d, uint32_t* line_buffe
         if (viewport_width > MODE1_GBA_VIEWPORT_X) {
             viewport_width = MODE1_GBA_VIEWPORT_X;
         }
-        if (obj_x >= obj_frame_width) {
+        if (virtuappu_mode1_obj_port) {
+            const int base_x = virtuappu_mode1_obj_base_x[i];
+            obj_x = base_x + (((obj_x - base_x + 256) & 511) - 256) + virtuappu_mode1_obj_dx[i];
+        } else if (obj_x >= obj_frame_width) {
             obj_x -= 512;
         }
         sx_start = 0;
@@ -1946,6 +1977,8 @@ void virtuappu_mode1_composite_line(int line, uint32_t bg_layers[MODE1_GBA_BG_CO
         evy = 16;
     }
 
+    mode1_port_window(&win0_left, &win0_right, &win0_top, &win0_bottom);
+    mode1_port_window(&win1_left, &win1_right, &win1_top, &win1_bottom);
     if (win0_right > frame_width) {
         win0_right = frame_width;
     }
@@ -2961,6 +2994,8 @@ static bool mode1_render_native_compact_line(int line, uint16_t dispcnt, int fra
         win0_right = win0h & 0xFFu;
         win1_left = win1h >> 8u;
         win1_right = win1h & 0xFFu;
+        mode1_port_window(&win0_left, &win0_right, &win0_top, &win0_bottom);
+        mode1_port_window(&win1_left, &win1_right, &win1_top, &win1_bottom);
         if (win0_right > frame_width) win0_right = frame_width;
         if (win0_bottom > mode1_frame_height) win0_bottom = mode1_frame_height;
         if (win1_right > frame_width) win1_right = frame_width;

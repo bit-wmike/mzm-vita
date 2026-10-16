@@ -11,6 +11,11 @@
  *   MZM_SHOT_EVERY=k     additionally save every k-th frame
  *   MZM_INPUT=script     "frame:keys:len,..." keys as GBA bits (hex), held len frames
  *   MZM_SRAM=file        save file (default dir/mzm.sav)
+ *   MZM_VIEW=0|1|2       view mode (GBA / wide / full)
+ *   MZM_QSAVE_AT=n       quick save at frame n, MZM_QLOAD_AT=n quick load
+ *   MZM_CHEATS=1         all cheats on;  MZM_30FPS=1  render every 2nd frame
+ *   settings.ini and quicksave.bin live in the output directory.
+ *   Key bit 0x8000 in MZM_INPUT is the missile button.
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -19,8 +24,12 @@
 #include <signal.h>
 #include <execinfo.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "port/port.h"
+#include "port/port_view.h"
+#include "port/port_config.h"
+#include "port/port_game.h"
 
 static const char *sOutDir = "host_out";
 static int sMaxFrames = 600;
@@ -29,6 +38,7 @@ static char sShotList[4096];
 static FILE *sWav;
 static long sWavFrames;
 static char sSramPath[1024];
+static int sQSaveAt = -1, sQLoadAt = -1;
 
 struct InputEvent { int frame, len; unsigned keys; };
 static struct InputEvent sInput[512];
@@ -45,9 +55,12 @@ static int ShotWanted(int frame)
     return p != NULL;
 }
 
-void Platform_Present(const uint32_t *pixels, int width, int height, int pitch)
+void Platform_Present(const uint32_t *pixels, int width, int height, int pitch, int zoomHeight)
 {
     int frame = (int)Port_FrameCounter();
+    (void)zoomHeight;
+    if (getenv("MZM_TIMING") && frame % 300 == 299)
+        printf("host: frame %d render avg %u us\n", frame, Port_ProfileAverageUs(PORT_PROF_RENDER));
     if (ShotWanted(frame)) {
         char path[1100];
         FILE *f;
@@ -84,6 +97,10 @@ uint16_t Platform_PollKeys(void)
         printf("host: done after %d frames\n", frame);
         exit(0);
     }
+    if (frame == sQSaveAt)
+        Port_RequestQuickSave();
+    if (frame == sQLoadAt)
+        Port_RequestQuickLoad();
     for (i = 0; i < sInputCount; i++)
         if (frame >= sInput[i].frame && frame < sInput[i].frame + sInput[i].len)
             keys |= (uint16_t)sInput[i].keys;
@@ -116,6 +133,49 @@ void Platform_SaveSram(const void *data, size_t size)
         return;
     fwrite(data, 1, size, f);
     fclose(f);
+}
+
+long Platform_ReadFile(const char *name, void *data, size_t size)
+{
+    char path[1100];
+    FILE *f;
+    long n;
+    snprintf(path, sizeof(path), "%s/%s", sOutDir, name);
+    f = fopen(path, "rb");
+    if (!f)
+        return -1;
+    n = (long)fread(data, 1, size, f);
+    fclose(f);
+    return n;
+}
+
+int Platform_WriteFile(const char *name, const void *data, size_t size)
+{
+    char path[1100], tmp[1110];
+    FILE *f;
+    snprintf(path, sizeof(path), "%s/%s", sOutDir, name);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    f = fopen(tmp, "wb");
+    if (!f)
+        return -1;
+    if (fwrite(data, 1, size, f) != size) {
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+    return rename(tmp, path) == 0 ? 0 : -1;
+}
+
+int Platform_PaceAllowsRender(void)
+{
+    return 1;
+}
+
+uint64_t Platform_TimeUs(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000u + ts.tv_nsec / 1000;
 }
 
 void Platform_Log(const char *fmt, ...)
@@ -203,8 +263,19 @@ int main(void)
             return 1;
         }
     }
+    if ((s = getenv("MZM_QSAVE_AT")) != NULL)
+        sQSaveAt = atoi(s);
+    if ((s = getenv("MZM_QLOAD_AT")) != NULL)
+        sQLoadAt = atoi(s);
     OpenWav();
-    Port_Init();
+    Port_Init(); /* loads settings.ini */
+    if ((s = getenv("MZM_VIEW")) != NULL)
+        gPortViewMode = gPortConfig.viewMode = atoi(s);
+    if (getenv("MZM_CHEATS"))
+        gPortConfig.cheatEnergy = gPortConfig.cheatMissiles = gPortConfig.cheatSuperMissiles =
+            gPortConfig.cheatPowerBombs = gPortConfig.cheatAbilities = 1;
+    if (getenv("MZM_30FPS"))
+        gPortConfig.frameRate30 = 1;
     Port_RunGame();
     return 0;
 }

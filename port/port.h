@@ -56,9 +56,18 @@ void HostAudio_PushFifoBlock(const int8_t *fifoA, const int8_t *fifoB);
 /* Ends the frame: renders PSG + resamples and hands the samples to the platform. */
 void HostAudio_EndFrame(void);
 
+/* ---- profiling (host_core.c) ---- */
+enum { PORT_PROF_RENDER, PORT_PROF_COUNT };
+void Port_ProfileBegin(int what);
+void Port_ProfileEnd(int what);
+/* Average time of `what` over the last report period, in microseconds. */
+unsigned Port_ProfileAverageUs(int what);
+uint64_t Platform_TimeUs(void);
+
 /* ---- platform interface ---- */
-/* Shows a finished frame (ABGR8888, `pitch` pixels per row). */
-void Platform_Present(const uint32_t *pixels, int width, int height, int pitch);
+/* Shows a finished frame (ABGR8888, `pitch` pixels per row), scaled so that
+ * `zoomHeight` lines fill the screen height (smaller frames get a border). */
+void Platform_Present(const uint32_t *pixels, int width, int height, int pitch, int zoomHeight);
 /* Returns pressed GBA keys (KEY_A ... KEY_L bits), polled once per frame. */
 uint16_t Platform_PollKeys(void);
 /* Receives interleaved stereo s16 samples at PORT_AUDIO_RATE. */
@@ -68,6 +77,14 @@ int Platform_LoadSram(void *data, size_t size);
 void Platform_SaveSram(const void *data, size_t size);
 /* Optional log output. */
 void Platform_Log(const char *fmt, ...);
+/* Small files in the port's data folder (settings, quick save).
+ * ReadFile returns the number of bytes read or -1; WriteFile returns 0 on
+ * success and should replace the file atomically. */
+long Platform_ReadFile(const char *name, void *data, size_t size);
+int Platform_WriteFile(const char *name, const void *data, size_t size);
+/* Frame pacing: called before rendering a frame; returns 0 when the frame
+ * should only be computed, not drawn (the game is running late). */
+int Platform_PaceAllowsRender(void);
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,7 @@
 #include "in_game.h"
+#ifdef PORT
+#include "port/port_view.h"
+#endif
 #include "dma.h"
 #include "gba.h"
 #include "callbacks.h"
@@ -160,7 +163,13 @@ u32 InGameHandler(void)
             ScrollProcessGeneral();
     
         ProjectileUpdate();
+#ifdef PORT
+        // The HUD always fills OAM from slot 0 (HudUpdateOam).
         HudDraw();
+        Port_OamMark(0, gNextOamSlot, PORT_ANCHOR_HUD, SCREEN_SIZE_X / 2, SCREEN_SIZE_Y / 2);
+#else
+        HudDraw();
+#endif
     
         SpriteDrawAll_HighPriority();
         ParticleProcessAll();

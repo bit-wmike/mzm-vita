@@ -21,6 +21,28 @@ extern "C" {
 #endif
 
 typedef void (*virtuappu_mode1_pre_line_fn)(int line);
+
+/* Zero Mission port: wide view. The game still renders for its 240x160
+ * screen; the port shows more around it by shifting every layer:
+ *   bg_dx/bg_dy   added to BGxHOFS/BGxVOFS (screen x = GBA x + view shift)
+ *   win_dx/win_dy added to window edges (an edge at the GBA screen border
+ *                 stays at the border of the wide frame)
+ *   obj_port      when set, OAM x is decoded as a GBA-screen coordinate that
+ *                 may lie right of the GBA screen (9-bit wrap undone) and
+ *                 obj_dx/obj_dy[i] are added per OAM entry. */
+extern int virtuappu_mode1_bg_dx[4];
+extern int virtuappu_mode1_bg_dy[4];
+extern int virtuappu_mode1_win_dx;
+extern int virtuappu_mode1_win_dy;
+extern int virtuappu_mode1_obj_port;
+extern int16_t virtuappu_mode1_obj_dx[128];
+extern int16_t virtuappu_mode1_obj_dy[128];
+/* GBA-screen position of the object each OAM entry belongs to: OAM x/y are
+ * 9/8-bit, so the full coordinate is the one nearest to this base. */
+extern int16_t virtuappu_mode1_obj_base_x[128];
+extern int16_t virtuappu_mode1_obj_base_y[128];
+/* Source GBA scanline = output line - line_dy (wide view shifted down). */
+extern int virtuappu_mode1_line_dy;
 extern virtuappu_mode1_pre_line_fn virtuappu_mode1_pre_line_callback;
 
 /* PORT_WIDESCREEN_SPIKE: MODE1_GBA_WIDTH made overridable via
@@ -47,7 +69,9 @@ extern virtuappu_mode1_pre_line_fn virtuappu_mode1_pre_line_callback;
  * off-screen sprites are kept out by the DISPLAY_WIDTH-relative culling
  * (CheckOnScreen / per-entity bounds), not by clipping here. */
 #define MODE1_GBA_VIEWPORT_X MODE1_GBA_WIDTH
+#ifndef MODE1_GBA_BG_CLIP_X
 #define MODE1_GBA_BG_CLIP_X 240
+#endif
 
 /* PPU/engine boundary for true widescreen: the renderer here is already
  * width-agnostic — set MODE1_GBA_WIDTH > 240 and a frame_width via

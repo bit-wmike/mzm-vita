@@ -1,3 +1,6 @@
+#ifdef PORT
+#include "port/port_view.h"
+#endif
 #include "projectile_util.h"
 #include "gba.h"
 #include "projectile.h"
@@ -581,7 +584,11 @@ void ProjectileDrawAll_LowPriority(void)
  * 
  * @param pProj Projectile data pointer
  */
+#ifdef PORT
+static void ProjectileDraw_PortImpl(struct ProjectileData* pProj)
+#else
 void ProjectileDraw(struct ProjectileData* pProj)
+#endif
 {
     const u16* src;
     u16* dst;
@@ -663,6 +670,16 @@ void ProjectileDraw(struct ProjectileData* pProj)
     }
 }
 
+#ifdef PORT
+// Port: remember which object the OAM entries belong to (port/port_view.c).
+void ProjectileDraw(struct ProjectileData* pProj)
+{
+    u8 oamStart = gNextOamSlot;
+    ProjectileDraw_PortImpl(pProj);
+    Port_OamMark(oamStart, gNextOamSlot, PORT_ANCHOR_WORLD, (s16)(SUB_PIXEL_TO_PIXEL_(pProj->xPosition) - SUB_PIXEL_TO_PIXEL(gBg1XPosition)), (s16)(SUB_PIXEL_TO_PIXEL_(pProj->yPosition) - SUB_PIXEL_TO_PIXEL(gBg1YPosition)));
+}
+#endif
+
 /**
  * @brief 4f578 | f8 | Checks if a projectile should despawn
  * 
@@ -711,6 +728,14 @@ void ProjectileCheckDespawn(struct ProjectileData* pProj)
 
     drawDistance += (SCREEN_SIZE_X_SUB_PIXEL);
     projRight = bgXRange + drawDistance;
+
+#ifdef PORT
+    // Wide view: the visible window extends past the GBA screen.
+    projLeft -= PIXEL_TO_SUB_PIXEL(gPortViewMarginLeft);
+    projRight += PIXEL_TO_SUB_PIXEL(gPortViewMarginRight);
+    projTop -= PIXEL_TO_SUB_PIXEL(gPortViewMarginTop);
+    projBottom += PIXEL_TO_SUB_PIXEL(gPortViewMarginBottom);
+#endif
 
     if (projLeft < xDistance && xDistance < projRight && projTop < yDistance && yDistance < projBottom)
         pProj->status |= PROJ_STATUS_ON_SCREEN;

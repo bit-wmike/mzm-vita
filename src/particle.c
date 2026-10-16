@@ -1,3 +1,6 @@
+#ifdef PORT
+#include "port/port_view.h"
+#endif
 #include "particle.h"
 #include "sprites_ai/ruins_test.h"
 #include "escape.h" // Required
@@ -120,6 +123,14 @@ void ParticleCheckOnScreen(struct ParticleEffect* pParticle)
     bgLeftBoundry = bgBaseX - (SCREEN_X_BLOCK_PADDING);
     bgRightBoundry = bgBaseX + (SCREEN_SIZE_X_SUB_PIXEL + SCREEN_X_BLOCK_PADDING);
 
+#ifdef PORT
+    // Wide view: the visible window extends past the GBA screen.
+    bgLeftBoundry -= PIXEL_TO_SUB_PIXEL(gPortViewMarginLeft);
+    bgRightBoundry += PIXEL_TO_SUB_PIXEL(gPortViewMarginRight);
+    bgBottomBoundry -= PIXEL_TO_SUB_PIXEL(gPortViewMarginTop);
+    bgTopBoundry += PIXEL_TO_SUB_PIXEL(gPortViewMarginBottom);
+#endif
+
     if (bgLeftBoundry < particleX && particleX < bgRightBoundry &&
         bgBottomBoundry < particleY && particleY < bgTopBoundry)
     {
@@ -139,7 +150,11 @@ void ParticleCheckOnScreen(struct ParticleEffect* pParticle)
  * 
  * @param pParticle Particle effect pointer
  */
+#ifdef PORT
+static void ParticleDraw_PortImpl(struct ParticleEffect* pParticle)
+#else
 void ParticleDraw(struct ParticleEffect* pParticle)
+#endif
 {
     s32 prevSlot;
     s32 partCount;
@@ -216,6 +231,16 @@ void ParticleDraw(struct ParticleEffect* pParticle)
         gNextOamSlot = partCount + prevSlot;
     }
 }
+
+#ifdef PORT
+// Port: remember which object the OAM entries belong to (port/port_view.c).
+void ParticleDraw(struct ParticleEffect* pParticle)
+{
+    u8 oamStart = gNextOamSlot;
+    ParticleDraw_PortImpl(pParticle);
+    Port_OamMark(oamStart, gNextOamSlot, (pParticle->status & PARTICLE_STATUS_ABSOLUTE_POSITION) ? PORT_ANCHOR_CENTER : PORT_ANCHOR_WORLD, (pParticle->status & PARTICLE_STATUS_ABSOLUTE_POSITION) ? (s16)pParticle->xPosition : (s16)(SUB_PIXEL_TO_PIXEL(pParticle->xPosition) - SUB_PIXEL_TO_PIXEL(gBg1XPosition)), (pParticle->status & PARTICLE_STATUS_ABSOLUTE_POSITION) ? (s16)pParticle->yPosition : (s16)(SUB_PIXEL_TO_PIXEL(pParticle->yPosition) - SUB_PIXEL_TO_PIXEL(gBg1YPosition)));
+}
+#endif
 
 /**
  * 53fd8 | 114 | Processes all the particle effects (calls the main loop and the draw function)

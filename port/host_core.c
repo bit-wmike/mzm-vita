@@ -16,6 +16,9 @@
 #include "port/port.h"
 #include "port/ppu/include/virtuappu.h"
 #include "port/ppu/include/cpu/mode1.h"
+#include "port/port_view.h"
+#include "port/port_config.h"
+#include "port/port_game.h"
 
 #include "types.h"
 #include "gba.h"
@@ -29,9 +32,10 @@ void PortSoundRelocate(void);
 
 static int sRendering;
 static uint32_t sFrameCounter;
-static uint32_t sFrameBuffer[PORT_GBA_W * PORT_GBA_H];
+static uint32_t sFrameBuffer[PORT_VIEW_MAX_W * PORT_VIEW_MAX_H];
 static unsigned char sSramShadow[sizeof(gHostSram)];
 static int sSramCheckTimer;
+static int sMainLoopHalt; /* HostRunFrame was entered from agbmain's Halt */
 
 #define IO16(off) (*(volatile u16 *)(gHostIo + (off)))
 
@@ -80,7 +84,9 @@ void HostSyscall(int num)
 
     switch (num) {
         case 2: /* Halt: wait for the next interrupt, which is VBlank */
+            sMainLoopHalt = 1;
             HostRunFrame();
+            sMainLoopHalt = 0;
             break;
         default: /* Stop (sleep) and others: return immediately */
             break;
@@ -140,33 +146,51 @@ static void PreLine(int line)
         RaiseIrq(IF_VCOUNT);
 }
 
+/* A frame that is computed but not drawn: the scanline events (HBlank DMA,
+ * HBlank / VCount interrupts) still happen, as the game may depend on them. */
+static void SkipFrame(void)
+{
+    int line;
+    sRendering = 1;
+    for (line = 0; line < 160; line++)
+        PreLine(line);
+    sRendering = 0;
+}
+
 static void RenderFrame(void)
 {
     static int bound;
     PPUMemory ppu;
     u16 dispcnt = IO16(0x000);
+    int width, height;
 
     if (!bound) {
         VirtuaPPUMode1GbaMemory mem = {
             gHostIo, gHostVram, (uint16_t *)gHostPalram, (uint16_t *)(gHostPalram + 0x200), (uint16_t *)gHostOam,
         };
         virtuappu_mode1_bind_gba_memory(&mem);
-        virtuappu_mode1_set_output_buffer(sFrameBuffer, PORT_GBA_W);
+        /* Exact fast paths of the renderer (single-core friendly). */
+        virtuappu_mode1_set_old3ds_profile(true);
+        virtuappu_mode1_set_output_buffer(sFrameBuffer, PORT_VIEW_MAX_W);
         bound = 1;
     }
 
+    Port_ViewBeforeRender(&width, &height);
+
     memset(&ppu, 0, sizeof(ppu));
-    ppu.frame_width = PORT_GBA_W;
-    ppu.frame_height = PORT_GBA_H;
-    ppu.frame_pitch = PORT_GBA_W;
+    ppu.frame_width = (uint16_t)width;
+    ppu.frame_height = (uint16_t)height;
+    ppu.frame_pitch = PORT_VIEW_MAX_W;
     ppu.mode = ((dispcnt & 7) == 0) ? 1 : 2;
 
     virtuappu_mode1_pre_line_callback = PreLine;
     sRendering = 1;
+    Port_ProfileBegin(PORT_PROF_RENDER);
     virtuappu_mode1_render_frame(&ppu);
+    Port_ProfileEnd(PORT_PROF_RENDER);
     sRendering = 0;
 
-    Platform_Present(sFrameBuffer, PORT_GBA_W, PORT_GBA_H, PORT_GBA_W);
+    Platform_Present(sFrameBuffer, width, height, PORT_VIEW_MAX_W, Port_ViewZoomHeight());
 }
 
 /* ---- frame ------------------------------------------------------------ */
@@ -188,19 +212,25 @@ void HostRunFrame(void)
     u16 keys;
 
     PlaySoundBlocks();
-    RenderFrame();
+    if ((gPortConfig.frameRate30 && (sFrameCounter & 1)) || !Platform_PaceAllowsRender())
+        SkipFrame();
+    else
+        RenderFrame();
 
     /* VBlank */
     IO16(0x006) = 160;
     IO16(0x004) |= DSTAT_IN_VBLANK;
     RaiseIrq(IF_VBLANK);
+    Port_ViewOnVBlank();
     virtuappu_mode1_commit_obj_metadata();
     IO16(0x004) &= ~DSTAT_IN_VBLANK;
 
     HostAudio_EndFrame();
 
-    keys = Platform_PollKeys();
+    keys = Port_TranslateKeys(Platform_PollKeys());
     IO16(0x130) = (u16)(~keys & 0x3FF);
+
+    Port_GameFrame(sMainLoopHalt);
 
     CheckSram();
     Port_TraceFrame();
@@ -241,9 +271,57 @@ void Port_TraceFrame(void)
 #endif
 }
 
+static uint64_t sProfStart[PORT_PROF_COUNT], sProfSum[PORT_PROF_COUNT], sProfMax[PORT_PROF_COUNT];
+static unsigned sProfCount[PORT_PROF_COUNT];
+
+void Port_ProfileBegin(int what)
+{
+    sProfStart[what] = Platform_TimeUs();
+}
+
+void Port_ProfileEnd(int what)
+{
+    uint64_t t = Platform_TimeUs() - sProfStart[what];
+    sProfSum[what] += t;
+    if (t > sProfMax[what])
+        sProfMax[what] = t;
+    sProfCount[what]++;
+}
+
+unsigned Port_ProfileAverageUs(int what)
+{
+    unsigned avg = sProfCount[what] ? (unsigned)(sProfSum[what] / sProfCount[what]) : 0;
+    sProfSum[what] = sProfMax[what] = 0;
+    sProfCount[what] = 0;
+    return avg;
+}
+
 uint32_t Port_FrameCounter(void)
 {
     return sFrameCounter;
+}
+
+/* Settings (settings.ini in the data folder). */
+void Port_ConfigLoad(void)
+{
+    static char text[4096];
+    long n;
+    Port_ConfigDefaults();
+    n = Platform_ReadFile("settings.ini", text, sizeof(text) - 1);
+    if (n > 0) {
+        text[n] = 0;
+        Port_ConfigParse(text);
+    }
+    gPortViewMode = gPortConfig.viewMode;
+}
+
+void Port_ConfigSave(void)
+{
+    static char text[4096];
+    int n = Port_ConfigWrite(text, sizeof(text));
+    gPortViewMode = gPortConfig.viewMode;
+    if (Platform_WriteFile("settings.ini", text, (size_t)n) != 0)
+        Platform_Log("config: cannot write settings.ini\n");
 }
 
 void Port_Init(void)
@@ -252,6 +330,7 @@ void Port_Init(void)
      * the GBA where the two arrays are adjacent in Iwram. */
     if ((void *)&gUnk_300376C[1] != (void *)&gPsgSounds[0])
         Platform_Log("port: WARNING gPsgSounds is not adjacent to gUnk_300376C\n");
+    Port_ConfigLoad();
     PortSoundRelocate();
     HostAudio_Init();
     IO16(0x130) = 0x3FF;

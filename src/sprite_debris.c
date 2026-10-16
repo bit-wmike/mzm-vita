@@ -1,3 +1,6 @@
+#ifdef PORT
+#include "port/port_view.h"
+#endif
 #include "oam.h"
 #include "sprite_debris.h"
 #include "data/particle_data.h"
@@ -283,7 +286,11 @@ void SpriteDebrisProcessAll(void)
  * 
  * @param pDebris Sprite Debris Pointer
  */
+#ifdef PORT
+static void SpriteDebrisDraw_PortImpl(struct SpriteDebris* pDebris)
+#else
 void SpriteDebrisDraw(struct SpriteDebris* pDebris)
+#endif
 {
     const u16* src;
     u16* dst;
@@ -297,8 +304,14 @@ void SpriteDebrisDraw(struct SpriteDebris* pDebris)
     u16 part2;
     u32 currSlot;
 
+#ifdef PORT
+    // Wide view: keep debris alive in the whole visible window.
+    if (gBg1YPosition + BLOCK_SIZE * 3 > (pDebris->yPosition + BLOCK_SIZE * 4 + PIXEL_TO_SUB_PIXEL(gPortViewMarginTop)) ||
+        gBg1YPosition + BLOCK_SIZE * 15 + PIXEL_TO_SUB_PIXEL(gPortViewMarginBottom) < (pDebris->yPosition + BLOCK_SIZE * 4))
+#else
     if (gBg1YPosition + BLOCK_SIZE * 3 > (pDebris->yPosition + BLOCK_SIZE * 4) ||
         gBg1YPosition + BLOCK_SIZE * 15 < (pDebris->yPosition + BLOCK_SIZE * 4))
+#endif
     {
         pDebris->exists = FALSE;
         return;
@@ -339,6 +352,16 @@ void SpriteDebrisDraw(struct SpriteDebris* pDebris)
         gNextOamSlot = prevSlot + partCount;
     }
 }
+
+#ifdef PORT
+// Port: remember which object the OAM entries belong to (port/port_view.c).
+void SpriteDebrisDraw(struct SpriteDebris* pDebris)
+{
+    u8 oamStart = gNextOamSlot;
+    SpriteDebrisDraw_PortImpl(pDebris);
+    Port_OamMark(oamStart, gNextOamSlot, PORT_ANCHOR_WORLD, (s16)(SUB_PIXEL_TO_PIXEL_(pDebris->xPosition) - SUB_PIXEL_TO_PIXEL(gBg1XPosition)), (s16)(SUB_PIXEL_TO_PIXEL_(pDebris->yPosition) - SUB_PIXEL_TO_PIXEL(gBg1YPosition)));
+}
+#endif
 
 /**
  * 11e04 | 44 | Loops on the sprite debris and calls the draw function

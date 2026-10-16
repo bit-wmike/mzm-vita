@@ -1,3 +1,6 @@
+#ifdef PORT
+#include "port/port_view.h"
+#endif
 #include "sprite.h"
 #include "sprite_debris.h"
 #include "syscalls.h"
@@ -1271,7 +1274,11 @@ void SpriteDrawAll_LowPriority(void)
  * @param pSprite Sprite data pointer
  * @param slot Ram slot
  */
+#ifdef PORT
+static void SpriteDraw_PortImpl(struct SpriteData* pSprite, s32 slot)
+#else
 void SpriteDraw(struct SpriteData* pSprite, s32 slot)
+#endif
 {
     const u16* src;
     u16* dst;
@@ -1627,6 +1634,16 @@ void SpriteDraw(struct SpriteData* pSprite, s32 slot)
     }
 }
 
+#ifdef PORT
+// Port: remember which object the OAM entries belong to (port/port_view.c).
+void SpriteDraw(struct SpriteData* pSprite, s32 slot)
+{
+    u8 oamStart = gNextOamSlot;
+    SpriteDraw_PortImpl(pSprite, slot);
+    Port_OamMark(oamStart, gNextOamSlot, (pSprite->properties & SP_ABSOLUTE_POSITION) ? PORT_ANCHOR_CENTER : PORT_ANCHOR_WORLD, (pSprite->properties & SP_ABSOLUTE_POSITION) ? (s16)pSprite->xPosition : (s16)(SUB_PIXEL_TO_PIXEL_(pSprite->xPosition) - SUB_PIXEL_TO_PIXEL(gBg1XPosition)), (pSprite->properties & SP_ABSOLUTE_POSITION) ? (s16)pSprite->yPosition : (s16)(SUB_PIXEL_TO_PIXEL_(pSprite->yPosition) - SUB_PIXEL_TO_PIXEL(gBg1YPosition)));
+}
+#endif
+
 /**
  * @brief ddd4 | 150 | Checks if a sprite is on screen
  * 
@@ -1671,6 +1688,14 @@ void SpriteCheckOnScreen(struct SpriteData* pSprite)
     spriteLeft = bgXRange - PIXEL_TO_SUB_PIXEL(pSprite->drawDistanceHorizontal);
     drawOffset = PIXEL_TO_SUB_PIXEL(pSprite->drawDistanceHorizontal) + SCREEN_SIZE_X_SUB_PIXEL;
     spriteRight = bgXRange + drawOffset;
+
+#ifdef PORT
+    // Wide view: the visible window extends past the GBA screen.
+    spriteLeft -= PIXEL_TO_SUB_PIXEL(gPortViewMarginLeft);
+    spriteRight += PIXEL_TO_SUB_PIXEL(gPortViewMarginRight);
+    spriteBottom -= PIXEL_TO_SUB_PIXEL(gPortViewMarginTop);
+    spriteTop += PIXEL_TO_SUB_PIXEL(gPortViewMarginBottom);
+#endif
 
     if (spriteLeft < spriteXRange && spriteXRange < spriteRight && spriteBottom < spriteYRange && spriteYRange < spriteTop)
     {

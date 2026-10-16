@@ -13,6 +13,7 @@
 #include "types.h"
 #include "gba/dma.h"
 #include "dma.h"
+#include "port/port_view.h"
 
 struct HostHdma {
     int active;
@@ -84,6 +85,9 @@ void HostDmaSet(int channel, const void *src, void *dst, unsigned int cnt)
             if (dst == (void *)gHostIwram && ((control >> 7) & 3) == 2 && units * unitSize >= 0x7000)
                 memset(__start_mzm_iwram, 0, __stop_mzm_iwram - __start_mzm_iwram);
             sHdma[channel].active = 0;
+            /* The OAM buffer goes to OAM at VBlank: latch the slot anchors. */
+            if (dst == (void *)gHostOam)
+                Port_OamCommit();
             break;
 
         case DMA_START_HBLANK:
