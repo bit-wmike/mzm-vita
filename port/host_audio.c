@@ -35,7 +35,7 @@ struct Envelope {
 
 struct Square {
     int on;
-    double phase;
+    u32 phase; /* one waveform period = 2^32 */
     int duty;
     struct Envelope env;
     int lengthTimer; /* in 1/256 s ticks remaining, -1 = off */
@@ -46,13 +46,13 @@ struct Square {
 
 struct Wave {
     int on;
-    double phase;
+    u32 phase;
     int lengthTimer;
 };
 
 struct Noise {
     int on;
-    double phase;
+    u64 phase; /* LFSR clocks, 32.32 fixed point */
     u16 lfsr;
     struct Envelope env;
     int lengthTimer;
@@ -61,7 +61,7 @@ struct Noise {
 static struct Square sSq[2];
 static struct Wave sWave;
 static struct Noise sNoise;
-static double sFrameSeqPhase; /* 512 Hz frame sequencer */
+static u32 sFrameSeqAcc; /* 512 Hz frame sequencer */
 static int sFrameSeqStep;
 static int sLastFreq1;
 
@@ -218,26 +218,32 @@ static void FrameSequencerTick(void)
 
 /* One output sample of the four PSG channels, as (left, right) in roughly
  * [-480, 480] each before the PSG ratio. */
+/* Phase increment per output sample for a tone of numerator/denominator Hz,
+ * with 2^32 = one period. Integer only: identical results on every CPU. */
+static u32 PhaseInc(u64 numerator, u64 denominator)
+{
+    return (u32)((numerator << 32) / (denominator * PORT_AUDIO_RATE));
+}
+
+/* One output sample of the four PSG channels, as (left, right) in roughly
+ * [-480, 480] each before the PSG ratio. */
 static void PsgSample(int *left, int *right)
 {
-    const double dt = 1.0 / PORT_AUDIO_RATE;
     int ch[4] = {0, 0, 0, 0};
     u16 cntL = IO16(0x80);
     int i;
 
-    sFrameSeqPhase += dt * 512.0;
-    while (sFrameSeqPhase >= 1.0) {
-        sFrameSeqPhase -= 1.0;
+    sFrameSeqAcc += 512;
+    while (sFrameSeqAcc >= PORT_AUDIO_RATE) {
+        sFrameSeqAcc -= PORT_AUDIO_RATE;
         FrameSequencerTick();
     }
 
     for (i = 0; i < 2; i++) {
         struct Square *s = &sSq[i];
         if (s->on && s->env.volume) {
-            double freq = 131072.0 / (2048 - s->freqReg);
-            s->phase += freq * dt;
-            s->phase -= (int)s->phase;
-            ch[i] = sDuty[s->duty][(int)(s->phase * 8) & 7] ? s->env.volume : -s->env.volume;
+            s->phase += PhaseInc(131072, 2048 - s->freqReg);
+            ch[i] = sDuty[s->duty][s->phase >> 29] ? s->env.volume : -s->env.volume;
         }
     }
 
@@ -245,9 +251,9 @@ static void PsgSample(int *left, int *right)
         u16 cntH = IO16(0x72);
         int freqReg = IO16(0x74) & 0x7FF;
         int pos, nib, vol;
-        sWave.phase += (2097152.0 / (2048 - freqReg)) * dt / 32.0;
-        sWave.phase -= (int)sWave.phase;
-        pos = (int)(sWave.phase * 32) & 31;
+        /* 32 samples per period, one sample every (2048 - x) / 2097152 s */
+        sWave.phase += PhaseInc(2097152, (u64)(2048 - freqReg) * 32);
+        pos = (int)(sWave.phase >> 27);
         nib = (gHostIo[0x90 + pos / 2] >> ((pos & 1) ? 0 : 4)) & 0xF;
         vol = (cntH >> 13) & 3;
         nib = nib * 2 - 15;
@@ -261,13 +267,14 @@ static void PsgSample(int *left, int *right)
 
     if (sNoise.on && sNoise.env.volume) {
         u16 r = IO16(0x7C);
-        double div = (r & 7) ? (r & 7) : 0.5;
         int shift = (r >> 4) & 0xF;
-        double freq = 524288.0 / div / (double)(2 << shift);
-        sNoise.phase += freq * dt;
-        while (sNoise.phase >= 1.0) {
+        /* LFSR clock = 524288 / r / 2^(s+1) Hz, r = 0 counts as 0.5 */
+        u64 num = 1048576;
+        u64 den = (u64)((r & 7) ? (r & 7) * 2 : 1) << (shift + 1);
+        sNoise.phase += ((num << 32) / (den * PORT_AUDIO_RATE));
+        while (sNoise.phase >= ((u64)1 << 32)) {
             int bit = (sNoise.lfsr ^ (sNoise.lfsr >> 1)) & 1;
-            sNoise.phase -= 1.0;
+            sNoise.phase -= (u64)1 << 32;
             sNoise.lfsr = (sNoise.lfsr >> 1) | (bit << 14);
             if (r & 8)
                 sNoise.lfsr = (sNoise.lfsr & ~0x40) | (bit << 6);

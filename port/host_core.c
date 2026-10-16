@@ -176,9 +176,10 @@ static void CheckSram(void)
     if (++sSramCheckTimer < 30)
         return;
     sSramCheckTimer = 0;
-    if (memcmp(sSramShadow, gHostSram, sizeof(gHostSram)) != 0) {
-        memcpy(sSramShadow, gHostSram, sizeof(gHostSram));
-        Platform_SaveSram(gHostSram, sizeof(gHostSram));
+    /* The cartridge has 32 KiB of SRAM; only that part is saved. */
+    if (memcmp(sSramShadow, gHostSram, 0x8000) != 0) {
+        memcpy(sSramShadow, gHostSram, 0x8000);
+        Platform_SaveSram(gHostSram, 0x8000);
     }
 }
 
@@ -227,7 +228,13 @@ void Port_TraceFrame(void)
         if (path)
             f = fopen(path, "w");
     }
-    if (f)
+    if (f && getenv("MZM_TRACE_AUDIO"))
+        fprintf(f, "%u psg=%08x raw=%08x ch0=%02x %02x %02x %02x %02x %02x %02x\n", sFrameCounter,
+                Crc(gHostIo + 0x60, 0x40), Crc(gMusicInfo.soundRawData, sizeof(gMusicInfo.soundRawData)),
+                gMusicInfo.soundChannels[0].unk_0, gMusicInfo.soundChannels[1].unk_0, gMusicInfo.soundChannels[2].unk_0,
+                gMusicInfo.soundChannels[3].unk_0, gMusicInfo.soundChannels[4].unk_0, gMusicInfo.soundChannels[5].unk_0,
+                gMusicInfo.soundChannels[6].unk_0);
+    else if (f)
         fprintf(f, "%u iw=%08x ew=%08x io=%08x vram=%08x\n", sFrameCounter,
                 Crc(__start_mzm_iwram, __stop_mzm_iwram - __start_mzm_iwram), Crc(gHostEwram, sizeof(gHostEwram)),
                 Crc(gHostIo, 0x400), Crc(gHostVram, sizeof(gHostVram)));
@@ -241,6 +248,10 @@ uint32_t Port_FrameCounter(void)
 
 void Port_Init(void)
 {
+    /* The sound engine indexes gUnk_300376C[1..4] to reach gPsgSounds, as on
+     * the GBA where the two arrays are adjacent in Iwram. */
+    if ((void *)&gUnk_300376C[1] != (void *)&gPsgSounds[0])
+        Platform_Log("port: WARNING gPsgSounds is not adjacent to gUnk_300376C\n");
     PortSoundRelocate();
     HostAudio_Init();
     IO16(0x130) = 0x3FF;

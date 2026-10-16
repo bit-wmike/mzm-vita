@@ -1,7 +1,6 @@
 /*
  * GBA BIOS functions used by the game (asm/syscalls.s), implemented in C.
  */
-#include <math.h>
 #include <string.h>
 
 #include "port/port.h"
@@ -93,11 +92,35 @@ void LZ77UncompWram(const void *src, void *dst)
     Lz77(src, dst, 0);
 }
 
-/* SWI 0x1F: wd points to a WaveData header (u16 type, u16 stat, u32 freq...). */
+/* SWI 0x1F: wd points to a WaveData header (u16 type, u16 stat, u32 freq...).
+ * Integer version of the BIOS algorithm (as in the m4a sound library), so
+ * the result is identical on every platform. */
+static const u32 sFreqTable[12] = {
+    2147483648u, 2275179671u, 2410468894u, 2553802834u, 2705659852u, 2866546760u,
+    3037000500u, 3217589947u, 3408917802u, 3611622603u, 3826380858u, 4053909305u,
+};
+
+static u32 UMulHigh(u32 a, u32 b)
+{
+    return (u32)(((u64)a * b) >> 32);
+}
+
+static u32 KeyScale(u32 key)
+{
+    return sFreqTable[key % 12] >> (14 - key / 12);
+}
+
 u32 MidiKey2Freq(u32 *wd, u8 mk, u8 fp)
 {
-    double freq = (double)wd[1];
-    return (u32)(freq / pow(2.0, (180.0 - mk - fp / 256.0) / 12.0));
+    u32 fine = (u32)fp << 24;
+    u32 v1, v2;
+    if (mk > 178) {
+        mk = 178;
+        fine = 255u << 24;
+    }
+    v1 = KeyScale(mk);
+    v2 = KeyScale(mk + 1);
+    return UMulHigh(wd[1], v1 + UMulHigh(v2 - v1, fine));
 }
 
 int Multiboot(void *mbp)

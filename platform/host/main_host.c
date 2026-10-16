@@ -183,6 +183,26 @@ int main(void)
             p++;
         }
     }
+    {
+        const char *romPath = getenv("MZM_ROM") ? getenv("MZM_ROM") : "mzm_eu_baserom.gba";
+        FILE *f = fopen(romPath, "rb");
+        static unsigned char rom[8 * 1024 * 1024 + 1];
+        size_t n;
+        if (!f) {
+            fprintf(stderr, "host: cannot open ROM %s\n", romPath);
+            return 1;
+        }
+        n = fread(rom, 1, sizeof(rom), f);
+        fclose(f);
+        if (!Port_RomMatches(rom, n)) {
+            fprintf(stderr, "host: %s is not Metroid - Zero Mission (Europe)\n", romPath);
+            return 1;
+        }
+        if (Port_LoadAssets(rom, n) != 0) {
+            fprintf(stderr, "host: loading game data failed\n");
+            return 1;
+        }
+    }
     OpenWav();
     Port_Init();
     Port_RunGame();

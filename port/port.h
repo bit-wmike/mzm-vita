@@ -28,6 +28,13 @@ extern unsigned char gHostSram[0x10000];
 #define PORT_GBA_W 240
 #define PORT_GBA_H 160
 
+/* ---- game data (port/host_assets.c) ---- */
+/* True if the image is the ROM this build was made for. */
+int Port_RomMatches(const void *rom, size_t size);
+/* Copies the game's data out of the ROM image (call once before Port_Init). */
+int Port_LoadAssets(const void *rom, size_t size);
+void Port_Sha1(const void *data, size_t len, unsigned char out[20]);
+
 /* ---- core (port/host_core.c) ---- */
 void Port_Init(void);
 /* Runs the game forever (agbmain, restarted on soft reset). */
