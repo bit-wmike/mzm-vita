@@ -3,7 +3,12 @@
 
 #include "types.h"
 
+#ifdef PORT
+void HostSyscall(int num);
+#define SYSCALL(num) HostSyscall(num)
+#else
 #define SYSCALL(num) asm("svc " #num)
+#endif
 
 #define SYSCALL_SoftReset 0
 #define SYSCALL_RegisterRamReset 1
@@ -58,7 +63,11 @@ struct WaveData {
     /* s8 data[size+1]; */
 };
 
+#ifdef PORT
+void CpuFastSet(void *src, void *dst, u32 control);
+#else
 void CpuFastSet(void *src, void *dst, u16 size);
+#endif
 void CpuSet(void *src, void *dst, u32 size);
 s32 DivarmDiv(s32 number, s32 denom);
 s32 DivarmMod(s32 denom, s32 number);

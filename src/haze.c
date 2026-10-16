@@ -164,8 +164,12 @@ void HazeSetupCode(HazeValue hazeValue)
             break;
 
         case HAZE_VALUE_BG3:
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_Bg3;
+#else
             DmaTransfer(3, Haze_Bg3, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
             
@@ -175,8 +179,12 @@ void HazeSetupCode(HazeValue hazeValue)
             break;
 
         case HAZE_VALUE_BG3_STRONG_WEAK:
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_Bg3StrongWeak;
+#else
             DmaTransfer(3, Haze_Bg3StrongWeak, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
             
@@ -186,8 +194,12 @@ void HazeSetupCode(HazeValue hazeValue)
             break;
  
         case HAZE_VALUE_BG3_NONE_WEAK:
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_Bg3NoneWeak;
+#else
             DmaTransfer(3, Haze_Bg3NoneWeak, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
             
@@ -197,8 +209,12 @@ void HazeSetupCode(HazeValue hazeValue)
             break;
 
         case HAZE_VALUE_BG3_BG2_STRONG_WEAK_MEDIUM:
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_Bg3Bg2StrongWeakMedium;
+#else
             DmaTransfer(3, Haze_Bg3Bg2StrongWeakMedium, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
             
@@ -208,8 +224,12 @@ void HazeSetupCode(HazeValue hazeValue)
             break;
 
         case HAZE_VALUE_BG3_BG2_BG1:
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_Bg3Bg2Bg1;
+#else
             DmaTransfer(3, Haze_Bg3Bg2Bg1, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
             
@@ -241,8 +261,12 @@ void HazeSetupCode(HazeValue hazeValue)
 
             gBackdropColor = COLOR_WHITE;
 
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_PowerBombExpanding;
+#else
             DmaTransfer(3, Haze_PowerBombExpanding, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
             
@@ -255,8 +279,12 @@ void HazeSetupCode(HazeValue hazeValue)
             break;
 
         case HAZE_VALUE_POWER_BOMB_RETRACTING:
+#ifdef PORT
+            gHazeProcessCodePointer = Haze_PowerBombRetracting;
+#else
             DmaTransfer(3, Haze_PowerBombRetracting, gNonGameplayRam.inGame.hazeCode, sizeof(gNonGameplayRam.inGame.hazeCode), 16);
             gHazeProcessCodePointer = (HazeFunc_T)(gNonGameplayRam.inGame.hazeCode + 1);
+#endif
 
             gHazeInfo.enabled = TRUE;
 

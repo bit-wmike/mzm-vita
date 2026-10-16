@@ -66,11 +66,15 @@ static void ChozodiaEscapeHBlank(void)
  */
 static void ChozodiaEscapeSetHBlank(void)
 {
+#ifdef PORT
+    CallbackSetHblank(ChozodiaEscapeHBlank);
+#else
     // Transfer code to RAM
     DMA3_COPY_16(ChozodiaEscapeHBlank, CHOZODIA_ESCAPE_DATA.hblankCode, 0x20);
     
     // Set pointer
     CallbackSetHblank((Func_T)(CHOZODIA_ESCAPE_DATA.hblankCode + 1));
+#endif
 }
 
 /**

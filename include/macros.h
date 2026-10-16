@@ -170,7 +170,7 @@
  * @param expr Expression to assert
  * @param id Error message
  */
-#define STATIC_ASSERT(expr, id) static_assert(expr, "Assert failed : " #id)
+#define STATIC_ASSERT(expr, id) _Static_assert(expr, "Assert failed : " #id)
 #else
 /**
  * @brief Performs a static assertion
@@ -588,7 +588,11 @@
  * @brief Shorthand to specify that something should be in the section allocated to IWRAM
  * 
  */
-#ifndef MODERN
+#if defined(PORT)
+// Port: all of the game's RAM variables live in one section so that clearing
+// Iwram (boot, soft reset) clears them like on the GBA (see port/host_dma.c).
+#define IWRAM_DATA __attribute__((section("mzm_iwram")))
+#elif !defined(MODERN)
 #define IWRAM_DATA __attribute__((section("iwram_data")))
 #else
 #define IWRAM_DATA

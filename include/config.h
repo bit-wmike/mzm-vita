@@ -54,4 +54,15 @@
 #undef RAM_PADDING
 #endif
 
+// Host / PS Vita port: modern compiler with bug fixes, but keep the GBA's
+// fixed Ewram layout (the port maps Ewram to a host array of the same size).
+#ifdef PORT
+#ifndef MODERN
+#define MODERN
+#define BUGFIX
+#define NON_MATCHING
+#undef RAM_PADDING
+#endif
+#endif
+
 #endif /* CONFIG_H*/

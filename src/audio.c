@@ -166,6 +166,15 @@ void UpdateMusic(void)
             }
             else if (pChannel->unk_13 & 0x10)
             {
+#ifdef PORT
+                // A channel that was just stopped (unk_0 = 0xA) has no track
+                // any more; the GBA reads harmless BIOS bytes through NULL here.
+                if (pVariables == NULL)
+                {
+                    pChannel->unk_13 &= ~0x10;
+                    continue;
+                }
+#endif
                 if (pVariables->unk_0 & 0x80)
                 {
                     pVariables->unk_6 = pChannel->unk_3;
@@ -1303,6 +1312,10 @@ static void unk_2030(struct PsgSoundData* pSound, struct TrackVariables* pVariab
         var_0 = 0;
 
     pSound->maybe_noteDelay = GetNoteDelay(pVariables, var_0, pVariables->unk_18);
+#ifdef PORT
+    // On the GBA a NULL pointer here writes harmlessly into the BIOS area.
+    if (pSound->pVariables != NULL)
+#endif
     pSound->pVariables->pSoundPsg = NULL;
     pSound->pVariables = pVariables;
     pSound->unk_F |= 2;

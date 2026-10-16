@@ -13,6 +13,11 @@ static void SramWriteUncheckedInternal(u8* src, u8* dest, u32 size)
 
 void SramWriteUnchecked(u8* src, u8* dest, u32 size)
 {
+#ifdef PORT
+    // The GBA runs this from RAM (SRAM can't be read while executing from
+    // ROM); the port calls the function directly.
+    SramWriteUncheckedInternal(src, dest, size);
+#else
     u16 code[0x40];
     u16* code_ptr;
     u16* func_ptr;
@@ -30,6 +35,7 @@ void SramWriteUnchecked(u8* src, u8* dest, u32 size)
 
     func = (void* (*)(u8*, u8*, u32))code + 1;
     func(src, dest, size);
+#endif
 }
 
 void SramWrite(u8* src, u8* dest, u32 size)
@@ -54,6 +60,9 @@ static u8* SramCheckInternal(u8* src, u8* dest, u32 size)
 
 u8* SramCheck(u8* src, u8* dest, u32 size)
 {
+#ifdef PORT
+    return SramCheckInternal(src, dest, size);
+#else
     u16 code[0x60];
     u16* code_ptr;
     u16* func_ptr;
@@ -71,6 +80,7 @@ u8* SramCheck(u8* src, u8* dest, u32 size)
 
     func = (void* (*)(u8*, u8*, u32))code + 1;
     return func(src, dest, size);
+#endif
 }
 
 u8* SramWriteChecked(u8* src, u8* dest, u32 size)

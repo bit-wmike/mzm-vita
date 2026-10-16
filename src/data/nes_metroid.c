@@ -1,9 +1,15 @@
 #include "data/nes_metroid.h"
 #include "macros.h"
 
+#ifdef PORT
+// The port does not include the GBA-native NES emulator; the integrity check
+// in the file select menu fails on this blank image and the option just exits.
+const u8 sNesMetroid[256] = { 0 };
+#else
 const u8 sNesMetroid[] = {
     #include "extracted/data/nes_metroid.bin.inc"
 };
+#endif
 
 #if defined(REGION_US_BETA)
 static const u8 sNesMetroidDataEnd[20] = {

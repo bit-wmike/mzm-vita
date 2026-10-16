@@ -26,3 +26,7 @@ tools/agbcc
 .vscode
 
 err.log
+
+# port
+/build/
+/host_out/

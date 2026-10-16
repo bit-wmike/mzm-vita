@@ -453,7 +453,7 @@ static const u16 sSamusInBlueShipOam_Controls_Frame9[OAM_DATA_SIZE(38)] = {
     OAM_ENTRY(0, -80, OAM_DIMS_32x32, OAM_X_FLIP, 0x46, 7, 0)
 };
 
-static const struct FrameData sSamusInBlueShipOam_Controls[11] = {
+const struct FrameData sSamusInBlueShipOam_Controls[11] = {
     [0] = {
         .pFrame = sSamusInBlueShipOam_Controls_Frame0,
         .timer = CONVERT_SECONDS(0.5f)

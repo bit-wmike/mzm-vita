@@ -1,0 +1,89 @@
+# Metroid: Zero Mission - host / PS Vita port build.
+#
+#   make -f Makefile.port TARGET=host     32-bit Linux headless test build
+#   make -f Makefile.port TARGET=vita     PS Vita build (needs $VITASDK)
+#
+# Before the first build, extract the game data from your own ROM:
+#   cp <your EU ROM> mzm_eu_baserom.gba && python3 tools/extractor.py -r eu
+
+TARGET ?= host
+REGION ?= eu
+BUILD := build/port-$(TARGET)
+GEN := build/port-gen-$(REGION)
+
+PYTHON ?= python3
+ARM_AS ?= arm-none-eabi-as
+ARM_OBJDUMP ?= arm-none-eabi-objdump
+
+REGION_DEF := -DREGION_$(shell echo $(REGION) | tr a-z A-Z)
+
+ifeq ($(TARGET),host)
+CC := gcc
+ARCHFLAGS := -m32 -fno-pie -no-pie
+OPT ?= -O2 -g
+LDLIBS := -lm -rdynamic
+PLATFORM_SRC := $(wildcard platform/host/*.c)
+OUT := $(BUILD)/mzm_host
+else ifeq ($(TARGET),vita)
+CC := $(VITASDK)/bin/arm-vita-eabi-gcc
+ARCHFLAGS := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=hard -mthumb
+OPT ?= -O2 -g
+PLATFORM_SRC := $(wildcard platform/vita/source/*.c)
+OUT := $(BUILD)/mzm_vita.elf
+endif
+
+CPPFLAGS := -DPORT $(REGION_DEF) -Iinclude -I. -Iport/ppu/include
+CFLAGS := $(ARCHFLAGS) $(OPT) -std=gnu11 -fno-strict-aliasing -fwrapv -fno-common -fno-toplevel-reorder -w
+
+GAME_SRC := $(filter-out src/dma.c src/multiboot.c,$(shell find src -name '*.c' | sort))
+PORT_SRC := $(wildcard port/*.c) port/ppu/src/mode1.c port/ppu/src/virtuappu.c
+
+GAME_OBJ := $(patsubst %.c,$(BUILD)/%.o,$(GAME_SRC))
+PORT_OBJ := $(patsubst %.c,$(BUILD)/%.o,$(PORT_SRC) $(PLATFORM_SRC))
+GEN_OBJ := $(BUILD)/gen/asm_gen.o $(BUILD)/gen/sound_relocs.o $(BUILD)/gen/sound_blobs.o
+
+all: $(OUT)
+
+$(OUT): $(GAME_OBJ) $(PORT_OBJ) $(GEN_OBJ)
+	$(CC) $(ARCHFLAGS) -o $@ $^ $(LDLIBS)
+
+# Game sources go through the decomp's text preprocessor first.
+$(BUILD)/src/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	@$(PYTHON) tools/preproc.py $< charmap.txt > $(BUILD)/src/$*.pp.c
+	$(CC) $(CPPFLAGS) -iquote $(dir $<) $(CFLAGS) -c $(BUILD)/src/$*.pp.c -o $@
+
+$(BUILD)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# Hand-written ARM code of the sound engine, translated to C.
+$(GEN)/audio_internal.o: asm/audio_internal.s
+	@mkdir -p $(GEN)
+	$(ARM_AS) -mcpu=arm7tdmi --defsym REGION_$(shell echo $(REGION) | tr a-z A-Z)=1 -I. $< -o $@
+$(GEN)/soundcode.o: asm/soundcode.s
+	@mkdir -p $(GEN)
+	$(ARM_AS) -mcpu=arm7tdmi --defsym REGION_$(shell echo $(REGION) | tr a-z A-Z)=1 -I. $< -o $@
+$(GEN)/asm_gen.c: $(GEN)/audio_internal.o $(GEN)/soundcode.o tools/port/asm2c.py
+	$(PYTHON) tools/port/asm2c.py --objdump $(ARM_OBJDUMP) --out $@ \
+		asm/audio_internal.s=$(GEN)/audio_internal.o asm/soundcode.s=$(GEN)/soundcode.o
+
+# Sound data (tracks, voice groups, samples).
+$(GEN)/sound_blobs.s $(GEN)/sound_relocs.c: tools/port/gen_sound.py $(wildcard sound/*.s)
+	@mkdir -p $(GEN)
+	$(PYTHON) tools/port/gen_sound.py --out $(GEN) --region $(REGION) --as $(ARM_AS)
+
+$(BUILD)/gen/asm_gen.o: $(GEN)/asm_gen.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+$(BUILD)/gen/sound_relocs.o: $(GEN)/sound_relocs.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+$(BUILD)/gen/sound_blobs.o: $(GEN)/sound_blobs.s
+	@mkdir -p $(dir $@)
+	$(CC) $(ARCHFLAGS) -c $< -o $@
+
+clean:
+	rm -rf $(BUILD) $(GEN)
+
+.PHONY: all clean

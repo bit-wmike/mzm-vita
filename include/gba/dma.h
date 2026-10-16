@@ -34,6 +34,12 @@
 #define REG_DMA3_CNT_L (REG_DMA3 + 8)
 #define REG_DMA3_CNT_H (REG_DMA3 + 10)
 
+#ifdef PORT
+/* Host build: DMA transfers are performed (or, for HBlank DMA, scheduled) by
+ * port/host_dma.c instead of writing hardware registers. */
+void HostDmaSet(int channel, const void *src, void *dst, unsigned int cnt);
+#define DMA_SET(channel, src, dst, cnt) { HostDmaSet(channel, (const void *)(src), (void *)(dst), (unsigned int)(cnt)); }
+#else
 #define DMA_SET(channel, src, dst, cnt)                                        \
     {                                                                          \
         vu32 *dma_ = (vu32 *)REG_DMA##channel;                                 \
@@ -42,6 +48,7 @@
         dma_[2]    = (vu32)cnt;                                                \
         dma_[2];                                                               \
     }
+#endif
 
 #define DMA3_COPY_16(src, dst, count)                                          \
     DMA_SET(3, src, dst, C_32_2_16(DMA_ENABLE, count))

@@ -5,9 +5,16 @@
 
 #include "structs/audio.h"
 
+#ifdef PORT
+struct SoundChannel;
+void CallSoundCodeA(struct SoundChannel*, u32*, u8);
+u8* CallSoundCodeB(u32*, u32*, u32*, u8);
+u8* CallSoundCodeC(u32*, u32*, u8);
+#else
 extern void CallSoundCodeA(void);
 extern void CallSoundCodeB(void);
 extern void CallSoundCodeC(void);
+#endif
 
 void InitializeAudio(void);
 void DoSoundAction(u32 action);

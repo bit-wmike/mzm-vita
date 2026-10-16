@@ -33,6 +33,12 @@ void InitializeAudio(void)
     WRITE_8(REG_SOUND3CNT_L, 0x0);
     WRITE_8(REG_SOUNDCNT_L, 0x77); // Sound 1-4 master volume left/right 100%
 
+#ifdef PORT
+    // The mixer runs in place; the GBA copies it to IWRAM for speed.
+    gSoundCodeAPointer = CallSoundCodeA;
+    gSoundCodeBPointer = CallSoundCodeB;
+    gSoundCodeCPointer = CallSoundCodeC;
+#else
     gSoundCodeAPointer = (SoundCodeAFunc_T)(gSoundCodeA + 1);
     DMA3_COPY_16(CallSoundCodeA, gSoundCodeA, sizeof(gSoundCodeA) / 2);
 
@@ -41,6 +47,7 @@ void InitializeAudio(void)
 
     gSoundCodeCPointer = (SoundCodeCFunc_T)(gSoundCodeC + 1);
     DMA3_COPY_16(CallSoundCodeC, gSoundCodeC, sizeof(gSoundCodeC) / 2);
+#endif
 
     DMA3_FILL_16(0, &gMusicInfo, 28);
 

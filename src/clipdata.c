@@ -22,11 +22,16 @@
  */
 void ClipdataSetupCode(void)
 {
+#ifdef PORT
+    // Runs in place on the host.
+    gClipdataCodePointer = ClipdataConvertToCollision;
+#else
     // Copy code to RAM
     DMA3_COPY_16(ClipdataConvertToCollision + 1, gNonGameplayRam.inGame.clipdataCode, sizeof(gNonGameplayRam.inGame.clipdataCode) / 2);
 
     // Set pointer
     gClipdataCodePointer = (ClipFunc_T)(gNonGameplayRam.inGame.clipdataCode + 1);
+#endif
 }
 
 /**
