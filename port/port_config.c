@@ -18,6 +18,7 @@ struct Field {
 };
 
 static struct Field sFields[] = {
+    {"config_version", &gPortConfig.configVersion, 0, 1000},
     {"view_mode", &gPortConfig.viewMode, 0, 2},
     {"display_style", &gPortConfig.displayStyle, 0, 2},
     {"frame_rate_30", &gPortConfig.frameRate30, 0, 1},
@@ -33,7 +34,8 @@ static struct Field sFields[] = {
 void Port_ConfigDefaults(void)
 {
     memset(&gPortConfig, 0, sizeof(gPortConfig));
-    gPortConfig.viewMode = PORT_VIEW_WIDE;
+    gPortConfig.configVersion = PORT_CONFIG_VERSION;
+    gPortConfig.viewMode = PORT_VIEW_FULL;
     gPortConfig.displayStyle = 1;
     gPortConfig.missileButton = 1;
 }
@@ -41,6 +43,7 @@ void Port_ConfigDefaults(void)
 void Port_ConfigParse(const char *text)
 {
     char line[128];
+    gPortConfig.configVersion = 0; /* files from 0.2.0 have no version */
     while (*text) {
         const char *end = strchr(text, '\n');
         size_t len = end ? (size_t)(end - text) : strlen(text);
@@ -64,6 +67,14 @@ void Port_ConfigParse(const char *text)
             }
         }
     }
+}
+
+/* After parsing: carry settings of older versions over to new defaults. */
+void Port_ConfigMigrate(void)
+{
+    if (gPortConfig.configVersion < 2)
+        gPortConfig.viewMode = PORT_VIEW_FULL; /* 0.2.0 defaulted to the wide view */
+    gPortConfig.configVersion = PORT_CONFIG_VERSION;
 }
 
 int Port_ConfigWrite(char *buf, int size)

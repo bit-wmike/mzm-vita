@@ -1,63 +1,59 @@
-# Metroid - Zero Mission Decomp
+# Metroid: Zero Mission – PS Vita port
 
-This is a work in progress decompilation of Metroid - Zero Mission.
+A native PlayStation Vita port of *Metroid: Zero Mission*, built from the
+[metroidret/mzm](https://github.com/metroidret/mzm) decompilation. The game
+code runs natively; the GBA hardware (memory, DMA, interrupts, sound FIFO,
+picture unit) is reproduced in C.
 
-2718/2721 functions decompiled (99.89%, [3 left](docs/non_matching_functions.md))
+German setup guide: [`platform/vita/README.md`](platform/vita/README.md).
+The original decompilation README is in [`docs/README-decomp.md`](docs/README-decomp.md).
 
-0x76b014/0x76b014 bytes of data not in blobs (100%, 0 left)
+**No game data is included.** The port needs your own dump of the European
+ROM (`sha1: 0fd107445a42e6f3a3e5ce8c865f412583179903`, five languages). At
+start-up it reads graphics, sounds and other data from that file.
 
-This repository can be used to build multiple ROMs. The ROMs are named like this: `mzm_{region}.gba` (or `mzm_{region}_debug.gba`)
+## Features
 
-Region indicates which region the ROM targets:
-- us: USA, North America `sha1: 5de8536afe1f0078ee6fe1089f890e8c7aa0a6e8`
-- eu: Europe `sha1: 0fd107445a42e6f3a3e5ce8c865f412583179903`
-- jp: Japan `sha1: 096f07685a3dc9286e71aa0b761f233b5efa2fcd`
-- cn: China **(Not yet supported)**
-- us_beta: USA beta version `sha1: 58986c4d6f2e5ccdc04936cc8b7c9d378570710c`
-- eu_beta: Europe beta version `sha1: 3c0b7ccd303c30ac5c4ffc9fb0aa7137a533ad69`
+- Wide view (282×160) and full view (368×208, default) with a fixed zoom;
+  menus and close-ups stay at 240×160.
+- Triangle fires a missile, quick save / quick load, cheats.
+- In-game menu (START + SELECT): view, display style (smooth / sharp /
+  pixel), 30 fps mode, controls, cheats. Settings in `settings.ini`.
+- Frame pacing that skips drawing a frame instead of slowing the game down.
+- Saves (`mzm_eu.sav`, 32 KiB) are compatible with GBA emulators.
 
-Debug simply indicates whether the ROM contains the debug features, it is optional.
+## Building
 
-The default built ROM is mzm_us.gba
+Needs [VitaSDK](https://vitasdk.org) and `arm-none-eabi` binutils (for the
+sound data and the assembler-to-C translation).
 
-**Discords**: 
-- https://discord.gg/2MGB9Xbr9y Metroidret
-- https://discord.gg/WtekHKb MAGConst
+```sh
+make -f Makefile.port TARGET=vita vpk     # ZeroMission_Vita_<version>.vpk
+make -f Makefile.port TARGET=host         # 32-bit Linux test runner (headless)
+```
 
-## Dependencies
+The build itself does not need the ROM. The host test runner does
+(`MZM_ROM=path`, see `platform/host/main_host.c` for its options).
 
-- [agbcc](https://github.com/jiangzhengwenjz/agbcc)
-- `binutils-arm-none-eabi`
-- A baserom for each ROM desired to be built (i.e.`mzm_us_baserom.gba` if you wish to build `mzm_us.gba`).
-- `python3`
-- `g++`
+## Layout
 
-## Setup
+| Path | Contents |
+|------|----------|
+| `port/` | GBA hardware layer, view, settings, quick save, cheats |
+| `port/ppu/` | Software GBA PPU (from VirtuaPPU, GPL-3.0) |
+| `platform/vita/` | Vita front end (vita2d, audio, input, menu) |
+| `platform/host/` | Headless Linux runner for automated tests |
+| `tools/port/` | Build tools: asset loader generator, asm→C translator, sound data |
 
-- **WINDOWS ONLY**: Install and setup [WSL](https://docs.microsoft.com/en-us/windows/wsl/install)
-- Run `sudo apt update` just in case
-- Install `binutils-arm-none-eabi` by running this command: `sudo apt install binutils-arm-none-eabi` or `sudo dnf install arm-none-eabi-binutils-cs`
-- Install `git` by running this command: `sudo apt install git` or `sudo dnf install git`
-- Install `make` by running this command: `sudo apt install make` or `sudo dnf install make`
-- Clone [agbcc](https://github.com/jiangzhengwenjz/agbcc) by running this command: `git clone https://github.com/jiangzhengwenjz/agbcc.git`
-- Enter the agbcc folder (run `cd agbcc`) and build it (run `./build.sh`)
-- Either:
-  - Install agbcc into this project (by using its `./install.sh <path>` script, where `<path>` is the path to the root of this repository), or
-  - Add agbcc to your path (`export PATH="<agbcc_path>:$PATH"`, where `<agbcc_path>` is the full path to the agbcc directory)
+Game source changes for the port are marked with `#ifdef PORT`.
 
-## Build
+## License
 
-- Run `make clean` if necessary
-  - Use `make clean DATA=1` to remove data as well
-- Run the data extractor if necessary: `python3 tools/extractor.py`
-  - Use the `-r` flag to specify a region other than `us` (ex: `-r jp`)
-  - Use the `-d` flag to extract only debug data from the US beta ROM (required for building a ROM with debug features)
-- Run `make` (using the `-j` option is recommended to speed up the process)
-- To build another version of the ROM you can do either of the following:
-  - Specify it directly (ex: `make us_debug` for the US ROM with debug features)
-  - Specify the flags, REGION (takes the region name, defaults to `us`) and DEBUG (takes 0 or 1, defaults to 0)
-- Optionally, you can combine the commands to make it easier: `python3 tools/extractor.py && make -j`
+- Decompilation and port code: MIT (see [`LICENSE`](LICENSE)).
+- `port/ppu/`: GPL-3.0-or-later (see [`port/ppu/LICENSE`](port/ppu/LICENSE)).
+  Because it is linked into the Vita build, the VPK as a whole is
+  distributed under the GPL-3.0; the complete source is in this repository.
+- Vita libraries: see [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+Metroid is a trademark of Nintendo. This project is not affiliated with or
+endorsed by Nintendo.

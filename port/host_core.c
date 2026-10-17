@@ -311,6 +311,7 @@ void Port_ConfigLoad(void)
     if (n > 0) {
         text[n] = 0;
         Port_ConfigParse(text);
+        Port_ConfigMigrate();
     }
     gPortViewMode = gPortConfig.viewMode;
 }

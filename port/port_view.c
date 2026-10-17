@@ -39,7 +39,7 @@
 #include "structs/clipdata.h"
 #include "structs/in_game_cutscene.h"
 
-int gPortViewMode = PORT_VIEW_WIDE;
+int gPortViewMode = PORT_VIEW_FULL;
 
 /* View of the frame being shown (latched at VBlank). */
 static int sActive;

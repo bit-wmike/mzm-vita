@@ -8,7 +8,10 @@ enum {
     PORT_STYLE_PIXEL = 2
 };
 
+#define PORT_CONFIG_VERSION 2
+
 struct PortConfig {
+    int configVersion;
     int viewMode;        /* PORT_VIEW_* */
     int displayStyle;    /* PORT_STYLE_* */
     int frameRate30;     /* render every second frame (game speed unchanged) */
@@ -28,6 +31,7 @@ void Port_ConfigDefaults(void);
 /* ini text <-> settings */
 void Port_ConfigParse(const char *text);
 int Port_ConfigWrite(char *buf, int size);
+void Port_ConfigMigrate(void);
 /* Load / save settings.ini through the platform (host_core.c). */
 void Port_ConfigLoad(void);
 void Port_ConfigSave(void);
