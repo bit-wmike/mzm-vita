@@ -14,7 +14,7 @@ start-up it reads graphics, sounds and other data from that file.
 
 ## Features
 
-- Wide view (282×160) and full view (368×208, default) with a fixed zoom;
+- Wide view (282×160) and full view (400×240, default, like the Minish Cap port) with a fixed zoom; rooms smaller than the view get a smaller, centred frame instead of showing what lies outside them;
   menus and close-ups stay at 240×160.
 - Triangle fires a missile, quick save / quick load, cheats.
 - In-game menu (START + SELECT): view, display style (smooth / sharp /

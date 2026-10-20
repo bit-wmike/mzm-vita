@@ -28,9 +28,13 @@
 #include <string.h>
 #include <vita2d.h>
 
+#include <pthread.h>
+#include <sched.h>
+
 #include "port/port.h"
 #include "gba/keys.h"
 #include "port/port_view.h"
+#include "cpu/mode1.h"
 #include "port/port_config.h"
 #include "port/port_game.h"
 
@@ -99,9 +103,10 @@ static void PerfFrame(SceUInt64 start)
             sSlowFrames++;
         if (++sWorkFrames == 300) {
             Platform_Log("[perf] frame work avg %.2f ms (render %.2f ms), max %.2f ms, >16 ms: %d of 300, "
-                         "view %dx%d, catchup %d\n",
+                         "view %dx%d, catchup %d, render threads %d\n",
                          sWorkSum / 300.0 / 1000.0, Port_ProfileAverageUs(PORT_PROF_RENDER) / 1000.0,
-                         sWorkMax / 1000.0, sSlowFrames, Port_ViewWidth(), Port_ViewHeight(), sCatchup);
+                         sWorkMax / 1000.0, sSlowFrames, Port_ViewWidth(), Port_ViewHeight(), sCatchup,
+                         1 + virtuappu_mode1_worker_count());
             sCatchup = 0;
             sWorkSum = sWorkMax = 0;
             sWorkFrames = sSlowFrames = 0;
@@ -594,6 +599,38 @@ static unsigned char *LoadRom(size_t *outSize, int *foundAny)
 
 /* --------------------------------------------------------------- main */
 
+/* libgcc reaches pthreads only through *weak* references, which never pull
+ * an object out of a static archive: on the Vita they all resolved to NULL,
+ * so libgcc took the program for single-threaded and the emulated TLS behind
+ * the renderer's __thread scanline buffers would be shared by all render
+ * threads. Taking the address of every gthreads entry point forces them in
+ * (same fix as in the Minish Cap port). */
+void *const gMzmGthreadsLink[] = {
+    (void *)&pthread_attr_destroy,   (void *)&pthread_attr_init,         (void *)&pthread_attr_setdetachstate,
+    (void *)&pthread_cancel,         (void *)&pthread_cond_broadcast,    (void *)&pthread_cond_destroy,
+    (void *)&pthread_cond_init,      (void *)&pthread_cond_signal,       (void *)&pthread_cond_timedwait,
+    (void *)&pthread_cond_wait,      (void *)&pthread_create,            (void *)&pthread_detach,
+    (void *)&pthread_equal,          (void *)&pthread_exit,              (void *)&pthread_getschedparam,
+    (void *)&pthread_getspecific,    (void *)&pthread_join,              (void *)&pthread_key_create,
+    (void *)&pthread_key_delete,     (void *)&pthread_mutex_destroy,     (void *)&pthread_mutex_init,
+    (void *)&pthread_mutex_lock,     (void *)&pthread_mutex_timedlock,   (void *)&pthread_mutex_trylock,
+    (void *)&pthread_mutex_unlock,   (void *)&pthread_mutexattr_destroy, (void *)&pthread_mutexattr_init,
+    (void *)&pthread_mutexattr_settype, (void *)&pthread_once,           (void *)&pthread_rwlock_rdlock,
+    (void *)&pthread_rwlock_tryrdlock, (void *)&pthread_rwlock_trywrlock, (void *)&pthread_rwlock_unlock,
+    (void *)&pthread_rwlock_wrlock,  (void *)&pthread_self,              (void *)&pthread_setschedparam,
+    (void *)&pthread_setspecific,    (void *)&sched_get_priority_max,    (void *)&sched_get_priority_min,
+    (void *)&sched_yield,
+};
+
+static void CheckGthreads(void)
+{
+    unsigned i, missing = 0;
+    for (i = 0; i < sizeof(gMzmGthreadsLink) / sizeof(gMzmGthreadsLink[0]); i++)
+        if (gMzmGthreadsLink[i] == NULL)
+            missing++;
+    Platform_Log("[thread] gthreads entry points missing=%u\n", missing);
+}
+
 int main(int argc, char **argv)
 {
     SceAppUtilInitParam init;
@@ -617,6 +654,7 @@ int main(int argc, char **argv)
     sceIoRename(LOG_PATH, DATA_DIR "/log_prev.txt");
     sLog = fopen(LOG_PATH, "w");
     Platform_Log("Metroid Zero Mission Vita %s\n", MZM_PORT_VERSION);
+    CheckGthreads();
 
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
     sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK, SCE_TOUCH_SAMPLING_STATE_START);

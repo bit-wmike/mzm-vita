@@ -30,3 +30,4 @@ err.log
 # port
 /build/
 /host_out/
+/platform/vita/sce_sys_local/

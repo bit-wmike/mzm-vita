@@ -11,7 +11,9 @@
  *    area around its own screen.
  *  - Every layer is shifted by (dx, dy): the window starts dx/dy pixels
  *    left of/above the GBA screen. At the room's edges the window is moved
- *    so it stays inside the room instead of showing what lies outside it.
+ *    so it stays inside the room. A room smaller than the window gets a
+ *    smaller frame (same zoom, centred, black around it): outside the room
+ *    there is nothing valid to show.
  *  - Objects: every OAM entry knows the screen position of the object it
  *    belongs to (Port_OamMark), so coordinates beyond the 9/8-bit OAM range
  *    are recovered. World objects move with the room, the HUD stays at the
@@ -147,27 +149,39 @@ static void SizeForMode(int mode, int *w, int *h)
     }
 }
 
-/* Offset of the window start before the GBA screen along one axis (>= 0). */
+/* Offset of the window start before the GBA screen along one axis (>= 0).
+ * The window is never larger than the room (see Port_ViewOnVBlank), so it
+ * always fits: it follows the camera and stops at the room's edges. */
 static int WindowOffset(int cam, int screen, int window, int room)
 {
     int extra = window - screen;
     int start = cam - extra / 2;
     int off;
 
-    if (room >= window) {
-        if (start < 0)
-            start = 0;
-        if (start > room - window)
-            start = room - window;
-    } else {
-        start = (room - window) / 2;
-    }
+    if (start > room - window)
+        start = room - window;
+    if (start < 0)
+        start = 0;
     off = cam - start;
     if (off < 0)
         off = 0;
     if (off > extra)
         off = extra;
     return off;
+}
+
+/* The window never shows anything outside the room: the GBA camera never
+ * does either, so the VRAM ring holds no valid tiles there (old tiles of
+ * other rooms showed up as garbage). A room smaller than the window gets a
+ * smaller frame instead; the zoom stays the same and the frame is centred,
+ * so the screen around it is black. */
+static int ClampToRoom(int size, int room, int gba)
+{
+    if (size > room)
+        size = room;
+    if (size < gba)
+        size = gba;
+    return size;
 }
 
 /* Called after the game's VBlank handler: the registers and OAM it has just
@@ -178,6 +192,10 @@ void Port_ViewOnVBlank(void)
 
     SizeForMode(gPortViewMode, &w, &h);
     sActive = (w != PORT_GBA_W || h != PORT_GBA_H) && GameplayVisible();
+    if (sActive) {
+        w = ClampToRoom(w, gBgPointersAndDimensions.clipdataWidth * 16, PORT_GBA_W);
+        h = ClampToRoom(h, gBgPointersAndDimensions.clipdataHeight * 16, PORT_GBA_H);
+    }
     sWidth = w;
     sHeight = h;
     if (sActive) {
@@ -192,6 +210,11 @@ void Port_ViewOnVBlank(void)
     gPortViewMarginRight = sActive ? w - PORT_GBA_W - sDx : 0;
     gPortViewMarginTop = sActive ? sDy : 0;
     gPortViewMarginBottom = sActive ? h - PORT_GBA_H - sDy : 0;
+}
+
+static int FloorDiv16(int v)
+{
+    return v >= 0 ? v / 16 : -((15 - v) / 16);
 }
 
 /* Writes the blocks of the visible window into the VRAM tilemap ring of each
@@ -212,14 +235,29 @@ static void FillRoomLayers(void)
         if (!(prop & BG_PROP_RLE_COMPRESSED) || decomp == NULL || tilemap == NULL || w == 0 || h == 0)
             continue;
 
-        bx0 = (posX - sDx) / 16 - 1;
-        bx1 = (posX - sDx + sWidth) / 16 + 1;
-        by0 = (posY - sDy) / 16 - 1;
-        by1 = (posY - sDy + sHeight) / 16 + 1;
-        if (bx1 - bx0 > 31)
-            bx1 = bx0 + 31;
-        if (by1 - by0 > 15)
-            by1 = by0 + 15;
+        /* The frame is rendered with the scroll registers written at the
+         * last VBlank; the game may have moved the camera since. Use the
+         * register value (9 bits) nearest to the game's position. */
+        {
+            int hofs = *(u16 *)(gHostIo + 0x10 + i * 4) & 0x1FF;
+            int vofs = *(u16 *)(gHostIo + 0x12 + i * 4) & 0x1FF;
+            posX += ((hofs - posX + 256) & 511) - 256;
+            posY += ((vofs - posY + 256) & 511) - 256;
+        }
+        /* Exact blocks of the window, then one spare block on each side as
+         * long as the ring (32x16 blocks) does not wrap onto itself. */
+        bx0 = FloorDiv16(posX - sDx);
+        bx1 = FloorDiv16(posX - sDx + sWidth - 1);
+        by0 = FloorDiv16(posY - sDy);
+        by1 = FloorDiv16(posY - sDy + sHeight - 1);
+        if (bx1 - bx0 + 1 <= 30) {
+            bx0--;
+            bx1++;
+        }
+        if (by1 - by0 + 1 <= 14) {
+            by0--;
+            by1++;
+        }
         if (bx0 < 0)
             bx0 = 0;
         if (by0 < 0)

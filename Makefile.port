@@ -21,7 +21,7 @@ ifeq ($(TARGET),host)
 CC := gcc
 ARCHFLAGS := -m32 -fno-pie -no-pie -malign-data=abi
 OPT ?= -O2 -g
-LDLIBS := -lm -rdynamic
+LDLIBS := -lm -rdynamic -pthread
 PLATFORM_SRC := $(wildcard platform/host/*.c)
 OUT := $(BUILD)/mzm_host
 else ifeq ($(TARGET),armhost)
@@ -31,7 +31,7 @@ else ifeq ($(TARGET),armhost)
 CC := arm-linux-gnueabihf-gcc
 ARCHFLAGS := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=hard -mthumb
 OPT ?= -O2 -g
-LDLIBS := -lm -static -Wl,-Ttext-segment=0x81000000
+LDLIBS := -lm -pthread -static -Wl,-Ttext-segment=0x81000000
 PLATFORM_SRC := $(wildcard platform/host/*.c)
 OUT := $(BUILD)/mzm_armhost
 else ifeq ($(TARGET),vita)
@@ -51,7 +51,13 @@ endif
 
 VERSION := $(shell cat platform/vita/VERSION)
 
-CPPFLAGS := -DPORT -DMODE1_GBA_WIDTH=400 -DMODE1_GBA_HEIGHT=240 -DMODE1_GBA_BG_CLIP_X=1024 -DMZM_PORT_VERSION=\"$(VERSION)\" $(REGION_DEF) -Iinclude -I. -Iport/ppu/include
+# Helper threads of the renderer (0 = render on the main thread only).
+RENDER_WORKERS ?= 2
+ifneq ($(RENDER_WORKERS),0)
+WORKER_DEF := -DMODE1_PTHREAD_WORKERS=$(RENDER_WORKERS)
+endif
+
+CPPFLAGS := -DPORT $(WORKER_DEF) -DMODE1_GBA_WIDTH=400 -DMODE1_GBA_HEIGHT=240 -DMODE1_GBA_BG_CLIP_X=1024 -DMZM_PORT_VERSION=\"$(VERSION)\" $(REGION_DEF) -Iinclude -I. -Iport/ppu/include
 CFLAGS := $(ARCHFLAGS) $(OPT) -std=gnu11 -fno-strict-aliasing -fwrapv -fno-common -fno-toplevel-reorder -w $(EXTRA_CFLAGS)
 
 GAME_SRC := $(filter-out src/dma.c src/multiboot.c,$(shell find src -name '*.c' | sort))
@@ -126,17 +132,21 @@ TITLE_ID := MZMV00001
 TITLE := Zero Mission
 VPK := $(BUILD)/ZeroMission_Vita_$(VERSION).vpk
 SCE := platform/vita/sce_sys
+# Optional personal LiveArea artwork in platform/vita/sce_sys_local/ (same
+# layout as sce_sys/). The folder is git-ignored, so third-party art never
+# lands in the repository; missing files fall back to the art in sce_sys/.
+ART = $(if $(wildcard platform/vita/sce_sys_local/$(1)),platform/vita/sce_sys_local/$(1),$(SCE)/$(1))
 
 vpk: $(VPK)
 
-$(VPK): $(OUT) $(SCE)/icon0.png $(SCE)/livearea/contents/bg.png $(SCE)/livearea/contents/startup.png $(SCE)/livearea/contents/template.xml platform/vita/VERSION
+$(VPK): $(OUT) $(call ART,icon0.png) $(call ART,livearea/contents/bg.png) $(call ART,livearea/contents/startup.png) $(SCE)/livearea/contents/template.xml platform/vita/VERSION
 	$(VITASDK)/bin/vita-elf-create $(OUT) $(BUILD)/mzm.velf
 	$(VITASDK)/bin/vita-make-fself -s -c $(BUILD)/mzm.velf $(BUILD)/eboot.bin
 	$(VITASDK)/bin/vita-mksfoex -s TITLE_ID=$(TITLE_ID) -s APP_VER=01.00 -d ATTRIBUTE2=12 "$(TITLE)" $(BUILD)/param.sfo
 	$(VITASDK)/bin/vita-pack-vpk -s $(BUILD)/param.sfo -b $(BUILD)/eboot.bin \
-	    -a $(SCE)/icon0.png=sce_sys/icon0.png \
-	    -a $(SCE)/livearea/contents/bg.png=sce_sys/livearea/contents/bg.png \
-	    -a $(SCE)/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png \
+	    -a $(call ART,icon0.png)=sce_sys/icon0.png \
+	    -a $(call ART,livearea/contents/bg.png)=sce_sys/livearea/contents/bg.png \
+	    -a $(call ART,livearea/contents/startup.png)=sce_sys/livearea/contents/startup.png \
 	    -a $(SCE)/livearea/contents/template.xml=sce_sys/livearea/contents/template.xml \
 	    $@
 	cp $(OUT) $(BUILD)/mzm_vita-$(VERSION).elf

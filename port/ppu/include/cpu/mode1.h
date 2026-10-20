@@ -249,6 +249,8 @@ void virtuappu_mode1_composite_line(int line, uint32_t bg_layers[MODE1_GBA_BG_CO
 void virtuappu_mode1_render_frame(const PPUMemory* ppu);
 void virtuappu_mode1_get_3ds_stats(VirtuaPPUMode13DSStats* stats);
 void virtuappu_mode1_shutdown_workers(void);
+/* Zero Mission port: number of helper render threads running (0 = none). */
+int virtuappu_mode1_worker_count(void);
 #ifdef VIRTUAPPU_TESTING
 /* Test-only oracle switch: the parity fuzzer renders each state once through
  * the optimized native paths and once through the generic reference path. */

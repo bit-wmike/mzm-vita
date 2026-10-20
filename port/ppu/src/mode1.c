@@ -3676,6 +3676,92 @@ void virtuappu_mode1_get_3ds_stats(VirtuaPPUMode13DSStats* stats) {
     if (stats)
         memset(stats, 0, sizeof(*stats));
 }
+#ifdef MODE1_PTHREAD_WORKERS
+/* Zero Mission port (PS Vita): the scanlines of a frame are rendered by the
+ * calling thread plus MODE1_PTHREAD_WORKERS helper threads, in chunks of 8
+ * lines taken from a shared counter. Every line is independent (per-line IO
+ * snapshots, per-thread scratch through VPPU_TLS), so the output is the same
+ * as single-threaded rendering. */
+#include <pthread.h>
+
+static pthread_t sMode1PWorkers[MODE1_PTHREAD_WORKERS];
+static int sMode1PWorkerCount = -1;
+static pthread_mutex_t sMode1PLock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t sMode1PStart = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t sMode1PDone = PTHREAD_COND_INITIALIZER;
+static const Mode1RenderLinesContext* sMode1PContext;
+static unsigned sMode1PGeneration;
+static int sMode1PBusy;
+static volatile int sMode1PNextLine;
+
+static void mode1_pthread_render(const Mode1RenderLinesContext* context) {
+    enum { CHUNK = 8 };
+    for (;;) {
+        const int first = __atomic_fetch_add(&sMode1PNextLine, CHUNK, __ATOMIC_RELAXED);
+        if (first >= context->frame_height)
+            return;
+        const int last = first + CHUNK < context->frame_height ? first + CHUNK : context->frame_height;
+        mode1_render_lines(context, first, last, NULL);
+    }
+}
+
+static void* mode1_pthread_main(void* argument) {
+    unsigned seen = 0;
+    (void)argument;
+    for (;;) {
+        const Mode1RenderLinesContext* context;
+        pthread_mutex_lock(&sMode1PLock);
+        while (sMode1PGeneration == seen)
+            pthread_cond_wait(&sMode1PStart, &sMode1PLock);
+        seen = sMode1PGeneration;
+        context = sMode1PContext;
+        pthread_mutex_unlock(&sMode1PLock);
+
+        mode1_pthread_render(context);
+
+        pthread_mutex_lock(&sMode1PLock);
+        if (--sMode1PBusy == 0)
+            pthread_cond_signal(&sMode1PDone);
+        pthread_mutex_unlock(&sMode1PLock);
+    }
+    return NULL;
+}
+
+static void mode1_render_lines_pthread(const Mode1RenderLinesContext* context) {
+    if (sMode1PWorkerCount < 0) {
+        sMode1PWorkerCount = 0;
+        for (int i = 0; i < MODE1_PTHREAD_WORKERS; ++i) {
+            if (pthread_create(&sMode1PWorkers[i], NULL, mode1_pthread_main, NULL) != 0)
+                break;
+            ++sMode1PWorkerCount;
+        }
+    }
+    __atomic_store_n(&sMode1PNextLine, 0, __ATOMIC_RELAXED);
+    if (sMode1PWorkerCount > 0) {
+        pthread_mutex_lock(&sMode1PLock);
+        sMode1PContext = context;
+        sMode1PBusy = sMode1PWorkerCount;
+        ++sMode1PGeneration;
+        pthread_cond_broadcast(&sMode1PStart);
+        pthread_mutex_unlock(&sMode1PLock);
+    }
+    mode1_pthread_render(context);
+    if (sMode1PWorkerCount > 0) {
+        pthread_mutex_lock(&sMode1PLock);
+        while (sMode1PBusy > 0)
+            pthread_cond_wait(&sMode1PDone, &sMode1PLock);
+        pthread_mutex_unlock(&sMode1PLock);
+    }
+}
+
+int virtuappu_mode1_worker_count(void) {
+    return sMode1PWorkerCount < 0 ? 0 : sMode1PWorkerCount;
+}
+#else
+int virtuappu_mode1_worker_count(void) {
+    return 0;
+}
+#endif
 void virtuappu_mode1_shutdown_workers(void) {
 }
 #endif
@@ -3781,6 +3867,8 @@ void virtuappu_mode1_render_frame(const PPUMemory* ppu) {
     };
 #ifdef TMC_3DS
     mode1_render_lines_3ds(&render_context);
+#elif defined(MODE1_PTHREAD_WORKERS)
+    mode1_render_lines_pthread(&render_context);
 #else
 #pragma omp parallel for schedule(static)
     for (line = 0; line < frame_height; ++line) {

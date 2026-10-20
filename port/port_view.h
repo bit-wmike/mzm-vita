@@ -9,8 +9,8 @@ enum {
 };
 
 #define PORT_VIEW_WIDE_W 282
-#define PORT_VIEW_FULL_W 368
-#define PORT_VIEW_FULL_H 208
+#define PORT_VIEW_FULL_W 400
+#define PORT_VIEW_FULL_H 240
 #define PORT_VIEW_MAX_W 400
 #define PORT_VIEW_MAX_H 240
 
